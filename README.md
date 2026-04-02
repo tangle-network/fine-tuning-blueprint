@@ -1,8 +1,8 @@
 ![Tangle Network Banner](https://raw.githubusercontent.com/tangle-network/tangle/refs/heads/main/assets/Tangle%20%20Banner.png)
 
-<h1 align="center">Fine-tuning Blueprint</h1>
+<h1 align="center">Fine-Tuning Blueprint</h1>
 
-<p align="center"><em>Decentralized model fine-tuning on <a href="https://tangle.tools">Tangle</a> — operators run LoRA, QLoRA, and full fine-tuning on GPU hardware.</em></p>
+<p align="center"><em>Decentralized model fine-tuning on <a href="https://tangle.tools">Tangle</a> — operators run LoRA, QLoRA, and full fine-tuning jobs via axolotl, unsloth, or torchtune backends.</em></p>
 
 <p align="center">
   <a href="https://discord.com/invite/cv8EfJu3Tn"><img src="https://img.shields.io/discord/833784453251596298?label=Discord" alt="Discord"></a>
@@ -11,11 +11,11 @@
 
 ## Overview
 
-A Tangle Blueprint enabling operators to offer model fine-tuning as a service. Users upload training data and receive fine-tuned adapter weights. Operators compete on price, hardware quality, and turnaround time.
+A Tangle Blueprint enabling operators to run fine-tuning jobs with anonymous payments through shielded credits. Operators connect to local training servers (axolotl, unsloth, torchtune) or remote APIs (Modal, Lambda, RunPod) and register on-chain with GPU capabilities and supported methods.
 
 **Dual payment paths:**
-- **On-chain jobs** via TangleProducer — verifiable training on Tangle
-- **x402 HTTP** — private fine-tuning at `/v1/fine_tuning/jobs`
+- **On-chain jobs** via TangleProducer — verifiable fine-tuning results on Tangle
+- **x402 HTTP** — fast private fine-tuning at `/v1/fine_tuning/jobs`
 
 OpenAI Fine-tuning API compatible. Built with [Blueprint SDK](https://github.com/tangle-network/blueprint) with TEE support.
 
@@ -23,38 +23,36 @@ OpenAI Fine-tuning API compatible. Built with [Blueprint SDK](https://github.com
 
 | Component | Language | Description |
 |-----------|----------|-------------|
-| `operator/` | Rust | Operator binary — wraps training backend, async job management, SpendAuth billing |
-| `contracts/` | Solidity | FinetuneBSM — per-epoch pricing, model tier validation, method support |
-
-## Supported Methods
-
-- **LoRA** — Low-Rank Adaptation, 24GB+ VRAM, fast training
-- **QLoRA** — Quantized LoRA, 16GB+ VRAM, memory efficient
-- **Full fine-tuning** — 80GB+ VRAM, highest quality
+| `operator/` | Rust | Operator binary — wraps training backend, HTTP server, SpendAuth billing |
+| `contracts/` | Solidity | FinetuneBSM — GPU validation, per-epoch pricing, method/model tracking |
 
 ## Pricing
 
-Per-epoch per model size tier. Blueprint admin configures tiers (e.g., 7B models = X per epoch, 70B = Y per epoch).
+Per-epoch pricing scaled by model size tier (parameters). Configured by the Blueprint admin via `configureModel()`. Training is priced per compute: `epochs * model_size_tier * price_per_epoch`.
 
 ## TEE Support
 
-Add `features = ["tee"]` to `blueprint-sdk` in Cargo.toml. Confidential fine-tuning — operator cannot see training data or resulting weights.
+Add `features = ["tee"]` to `blueprint-sdk` in Cargo.toml. The `TeeLayer` middleware transparently attaches attestation metadata when running in a Confidential VM (H100 CC, SEV-SNP, TDX). Passes through when no TEE is configured.
 
 ## Quick Start
 
 ```bash
-# Local mode (requires axolotl/unsloth training server)
-FINETUNE_ENDPOINT=http://localhost:8000 cargo run --release
+# Configure
+cp config/operator.example.toml config/operator.toml
+# Edit: supported models, methods, GPU specs, training endpoint URL, pricing
 
-# API mode (requires Modal/RunPod endpoint)
-FINETUNE_ENDPOINT=https://your-modal-endpoint cargo run --release
+# Build
+cargo build --release
+
+# Run (requires a running training server)
+FINETUNE_ENDPOINT=http://localhost:9000 ./target/release/finetune-operator
 ```
 
 ## Related Repos
 
 - [Blueprint SDK](https://github.com/tangle-network/blueprint) — framework for building Blueprints
 - [vLLM Inference Blueprint](https://github.com/tangle-network/vllm-inference-blueprint) — text inference
-- [Voice Inference Blueprint](https://github.com/tangle-network/voice-inference-blueprint) — TTS/STT
 - [Image Generation Blueprint](https://github.com/tangle-network/image-gen-inference-blueprint) — image generation
+- [Voice Inference Blueprint](https://github.com/tangle-network/voice-inference-blueprint) — TTS/STT
 - [Embedding Blueprint](https://github.com/tangle-network/embedding-inference-blueprint) — text embeddings
 - [Video Generation Blueprint](https://github.com/tangle-network/video-gen-inference-blueprint) — video generation
