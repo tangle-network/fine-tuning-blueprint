@@ -4,7 +4,7 @@ pub mod health;
 pub mod qos;
 pub mod server;
 
-use blueprint_std::sync::{Arc, OnceLock};
+use blueprint_sdk::std::sync::{Arc, OnceLock};
 
 use alloy_sol_types::sol;
 use blueprint_sdk::macros::debug_job;

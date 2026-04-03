@@ -6,8 +6,8 @@
 //!
 //! Configurable via `FINETUNE_ENDPOINT` env var or operator config.
 
-use blueprint_std::sync::Arc;
-use blueprint_std::time::Duration;
+use blueprint_sdk::std::sync::Arc;
+use blueprint_sdk::std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
