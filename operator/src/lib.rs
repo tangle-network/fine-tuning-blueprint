@@ -70,6 +70,33 @@ pub fn init_for_testing(base_url: &str) {
     let _ = FINETUNE_ENDPOINT.set(FinetuneEndpoint { client });
 }
 
+/// Direct fine-tune submission -- same logic as run_finetune but without TangleArg.
+/// Returns the job_id from the backend.
+pub async fn submit_finetune_direct(
+    request: &FinetuneRequest,
+) -> Result<String, RunnerError> {
+    let endpoint = FINETUNE_ENDPOINT.get().ok_or_else(|| {
+        RunnerError::Other("finetune endpoint not registered".into())
+    })?;
+
+    let job_id = endpoint
+        .client
+        .submit_job(
+            &request.baseModel,
+            &request.datasetUrl,
+            &request.method,
+            finetune::Hyperparams {
+                n_epochs: request.epochs,
+                batch_size: request.batchSize,
+                learning_rate_multiplier: None,
+            },
+        )
+        .await
+        .map_err(|e| RunnerError::Other(format!("finetune job submission failed: {e}").into()))?;
+
+    Ok(job_id)
+}
+
 // --- Router ---
 
 pub fn router() -> Router {
