@@ -187,11 +187,106 @@ contract FinetuneBSM is Initializable, UUPSUpgradeable, BlueprintServiceManagerB
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // DYNAMIC MEMBERSHIP
+    // MULTI-OPERATOR DISTRIBUTED TRAINING
     // ═══════════════════════════════════════════════════════════════════════
+
+    /// @notice Per-job contribution tracking for multi-operator training
+    struct OperatorContribution {
+        uint64 gpuHoursContributed;
+        uint64 stepsCompleted;
+        uint32 joinedAtEpoch;
+        uint32 leftAtEpoch;
+        bool active;
+    }
+
+    /// @notice Distributed training job state
+    struct TrainingJobState {
+        uint32 currentEpoch;
+        uint32 totalEpochs;
+        uint32 operatorCount;
+        bytes32 latestCheckpointHash;
+        uint64 totalPayment;
+        bool completed;
+    }
+
+    /// @notice jobId => operator => contribution
+    mapping(uint64 => mapping(address => OperatorContribution)) public jobContributions;
+
+    /// @notice jobId => training state
+    mapping(uint64 => TrainingJobState) public trainingJobs;
+
+    /// @notice jobId => operators list
+    mapping(uint64 => address[]) public jobOperators;
+
+    event OperatorJoinedTraining(uint64 indexed jobId, address indexed operator, uint32 epoch);
+    event OperatorLeftTraining(uint64 indexed jobId, address indexed operator, uint32 epoch);
+    event CheckpointSubmitted(uint64 indexed jobId, bytes32 checkpointHash, uint32 epoch);
+    event PaymentDistributed(uint64 indexed jobId, address indexed operator, uint64 amount);
 
     function canJoin(uint64, address operator) external view override returns (bool) {
         return operatorCaps[operator].active;
+    }
+
+    /// @notice Operator joins an active distributed training job
+    function joinTraining(uint64 jobId) external {
+        require(operatorCaps[msg.sender].active, "not registered");
+        require(!jobContributions[jobId][msg.sender].active, "already in job");
+
+        jobContributions[jobId][msg.sender] = OperatorContribution({
+            gpuHoursContributed: 0,
+            stepsCompleted: 0,
+            joinedAtEpoch: trainingJobs[jobId].currentEpoch,
+            leftAtEpoch: 0,
+            active: true
+        });
+        jobOperators[jobId].push(msg.sender);
+        trainingJobs[jobId].operatorCount++;
+
+        emit OperatorJoinedTraining(jobId, msg.sender, trainingJobs[jobId].currentEpoch);
+    }
+
+    /// @notice Operator gracefully leaves a training job
+    function leaveTraining(uint64 jobId) external {
+        require(jobContributions[jobId][msg.sender].active, "not in job");
+        jobContributions[jobId][msg.sender].active = false;
+        jobContributions[jobId][msg.sender].leftAtEpoch = trainingJobs[jobId].currentEpoch;
+        trainingJobs[jobId].operatorCount--;
+
+        emit OperatorLeftTraining(jobId, msg.sender, trainingJobs[jobId].currentEpoch);
+    }
+
+    /// @notice Submit a checkpoint hash (any active operator in the job)
+    function submitCheckpoint(uint64 jobId, bytes32 checkpointHash, uint32 epoch) external {
+        require(jobContributions[jobId][msg.sender].active, "not in job");
+        trainingJobs[jobId].latestCheckpointHash = checkpointHash;
+        trainingJobs[jobId].currentEpoch = epoch;
+
+        emit CheckpointSubmitted(jobId, checkpointHash, epoch);
+    }
+
+    /// @notice Record GPU-hours contribution (called via heartbeat validation)
+    function recordContribution(uint64 jobId, address operator, uint64 gpuHours, uint64 steps) external onlyFromTangle {
+        OperatorContribution storage c = jobContributions[jobId][operator];
+        require(c.active, "not in job");
+        c.gpuHoursContributed += gpuHours;
+        c.stepsCompleted += steps;
+    }
+
+    /// @notice Distribute payment proportionally by GPU-hours contributed
+    function getPaymentSplit(uint64 jobId) external view returns (address[] memory operators, uint64[] memory amounts) {
+        address[] memory ops = jobOperators[jobId];
+        uint64 totalHours = 0;
+        for (uint i = 0; i < ops.length; i++) {
+            totalHours += jobContributions[jobId][ops[i]].gpuHoursContributed;
+        }
+        if (totalHours == 0) return (ops, new uint64[](ops.length));
+
+        uint64[] memory splits = new uint64[](ops.length);
+        uint64 totalPayment = trainingJobs[jobId].totalPayment;
+        for (uint i = 0; i < ops.length; i++) {
+            splits[i] = (totalPayment * jobContributions[jobId][ops[i]].gpuHoursContributed) / totalHours;
+        }
+        return (ops, splits);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
